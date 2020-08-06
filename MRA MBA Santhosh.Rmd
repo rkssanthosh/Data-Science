@@ -1,0 +1,50 @@
+---
+title: "MRA MBA Santhosh"
+author: "Santhosh Sadasivam"
+date: "6/13/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+setwd("C:/Users/santhosh/Desktop/R programming/MRA/MRA Assignment")
+getwd()
+library(plyr)
+library(ggplot2)
+library(arules)
+library(lubridate)
+library(tidyverse)
+library(dplyr)
+# Reading the data file
+cafe = read.csv("Copy of Cafe Coffee Night.csv", header = TRUE)
+attach(cafe)
+
+
+cafe$Bill.Number=as.factor(cafe$Bill.Number)
+cafe_agg = split(cafe$Item.Desc,cafe$Bill.Number)
+head(cafe_agg)
+
+txn = as(cafe_agg, "transactions")
+txn
+
+freq = itemFrequency(txn)
+freq = freq[order(-freq)]
+barplot(freq[1:10], las = 2, cex.axis = 0.5)
+
+itemFrequency(txn[,1:5])
+itemFrequencyPlot(txn, topN=10)
+
+rules = apriori(txn, parameter = list(support = 0.0001,confidence = 0.25, minlen=2))
+inspect(sort(rules, by ="lift")[1:10])
+
+rules = sort(rules, by = "support")[1:20]
+library(RColorBrewer)
+#install.packages("arulesViz")
+library(arulesViz)
+plot(rules, method = "graph")
+         
+```
+

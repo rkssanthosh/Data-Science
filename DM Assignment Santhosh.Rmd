@@ -1,0 +1,1068 @@
+---
+title: "DM Assignment"
+author: "Santhosh Sadasivam"
+date: "12/11/2019"
+output:
+  word_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Description
+
+Thera Bank - Loan Purchase Modeling
+
+This case is about a bank (Thera Bank) which has a growing customer base. Majority of these customers are liability customers (depositors) with varying size of deposits. The number of customers who are also borrowers (asset customers) is quite small, and the bank is interested in expanding this base rapidly to bring in more loan business and in the process, earn more through the interest on loans. In particular, the management wants to explore ways of converting its liability customers to personal loan customers (while retaining them as depositors). A campaign that the bank ran last year for liability customers showed a healthy conversion rate of over 9% success. This has encouraged the retail marketing department to devise campaigns with better target marketing to increase the success ratio with a minimal budget. The department wants to build a model that will help them identify the potential customers who have a higher probability of purchasing the loan. This will increase the success ratio while at the same time reduce the cost of the campaign. The dataset has data on 5000 customers. The data include customer demographic information (age, income, etc.), the customer's relationship with the bank (mortgage, securities account, etc.), and the customer response to the last personal loan campaign (Personal Loan). Among these 5000 customers, only 480 (= 9.6%) accepted the personal loan that was offered to them in the earlier campaign.
+
+Problem Statement
+
+1. EDA - Basic data summary, Univariate, Bivariate analysis, graphs	2.1 Applying CART <plot the tree>	
+2.2 Interpret the CART model output <pruning, remarks on pruning, plot the pruned tree>	
+2.3 Applying Random Forests<plot the tree>
+2.4 Interpret the RF model output <with remarks, making it meaningful for everybody>	
+3.1 Confusion matrix interpretation	
+3.2 Interpretation of other Model Performance Measures < AUC, ROC>
+3.3 Remarks on Model validation exercise <Which model performed the best>	
+
+```{r}
+# Libraries to install
+library(readxl)
+library(readr)
+library(DataExplorer)
+library(caTools)
+library(rpart)
+library(rpart.plot)
+library(rattle)
+library(data.table)
+library(ROCR)
+library(ineq)
+library(InformationValue)
+library(ModelMetrics)
+library(reshape)
+library(randomForest)
+```
+
+```{r}
+# Setting the working directory
+setwd("C:/Users/santhosh/Desktop/R programming/DM Assignment")
+getwd()
+
+```
+
+
+```{r}
+# Reading the sata file
+data = read_xlsx("Thera Bank_Personal_Loan_Modelling-dataset-1.xlsx",2)
+
+```
+
+```{r}
+# Exploratory Data Analysis
+
+## Univariate Analysis
+print(summary(data))
+print(head(data))
+attach(data)
+
+# we could see the summary of the data set for each column with Mean,Median, Min, Max, 1st Qtr, 3rd Qtr etc..
+```
+
+18 NA's observed in varibale - Family Members
+
+```{r}
+## Data Types
+print(colnames(data))
+str(data)
+# Data has all varibales as numeric and it is found that data is a mix of table and dataframe
+
+data = data.frame(data) # converting dataset into dataframe
+# We could see that all varibales are indicated as numbers but we need to convert a few variables into factors
+```
+
+```{r}
+# Converting required variables into factors
+data$Online=as.factor(data$Online)
+data$Personal.Loan = as.factor(data$Personal.Loan)
+data$Education=as.factor(data$Education)
+data$Securities.Account=as.factor(data$Securities.Account)
+data$CD.Account=as.factor(data$CD.Account)
+data$CreditCard = as.factor(data$CreditCard)
+data$Family.members = as.factor(data$Family.members)
+print(str(data))
+```
+
+```{r}
+# Few more univariate analysis
+print(dim(data))
+
+```
+
+Dataset has 5000 Rows and 14 Columns
+
+```{r}
+# Column Names
+print(colnames(data))
+```
+```{r}
+# Making Valid clumn names syntactically
+
+colnames(data)=make.names(colnames(data))
+print(colnames(data))
+```
+
+
+```{r}
+# Removing the first column ID as it is a sequential number and Zip code is also not required for our processing
+data = data [,c(-1,-4)] # removing first column ID & 4th column Zip code
+
+# Identifying NA in the dataset
+sum(is.na(data))
+```
+
+There are 18 NAs in the dataset. as observed earlier all 18 in Family Members column
+
+```{r}
+# Proportio of Responders and Non responders to personal loan campaign
+
+prop.table(table(data$Personal.Loan))*100
+
+```
+9.6% responded to the personal loan campaign
+90.4% has not responded to the campaign
+
+```{r}
+# missing values and plotting missing values
+plot_missing(data) 
+colSums(is.na(data))
+```
+
+Family Members observed with 0.36% missing values
+Since the percnetage is low we can delete it from the dataset
+
+```{r}
+# Missing Value Treatment
+print.data.frame(data[!complete.cases(data),]) # showing no of rows where NA is present
+```
+
+```{r}
+data = na.omit(data) # deleting rows containing NAs
+colSums(is.na(data)) # finding columns with no values
+
+```
+
+All the rows which had NAs are removed completely
+
+```{r}
+# Negative Values - As observed earlier years of experience had negative values. Yrs of exp cannot be negative. Also checking for other columns
+
+print(colSums(data<0))
+cat("Total Negative Values:",
+(length(data$Experience..in.years.[data$Experience..in.years.<0])/nrow(data)) *100 ,  "%")
+```
+
+Total Negative Values: 1.043758 %
+
+Professional Experience has 52 negative values
+
+Since experience cant be negative we need to treat them
+
+```{r}
+# Negative Value Treatment
+
+data[data$Experience..in.years. <0, "Experience..in.years."] = mean(data$Experience..in.years.[data$Experience..in.years. >= 0])
+
+print(colSums(data < 0))
+
+```
+
+Replaced Negative values with mean value of >=0 data values
+
+
+```{r}
+## Bivariate Analysis in EDA
+# Finding correlation between the variables
+# Correlation plot
+plot_correlation(data)
+
+```
+
+
+Age and Experience has high correlation
+Income and Averge spending on credit card has medium correlation
+There is no other significan correlation as we observe the plot
+
+```{r}
+# Plotting Histogram
+
+plot_histogram(data, binary_as_factor = FALSE, geom_histogram_args = list("fill" = "red"))
+```
+
+
+Age and Expereince are normall distributed
+CC Avg income right skewed
+Mortgage - 70% has no mortgage
+
+```{r}
+# Finding Outliers using Boxplot
+
+plot_boxplot(data, by="Personal.Loan", binary_as_factor = FALSE, geom_boxplot_args = list("fill"= "Blue"))
+
+
+```
+Outliers observed in CC Avg, Income, Mortgage
+
+```{r}
+# Density Plot
+
+plot_density(data, binary_as_factor = FALSE, geom_density_args = list("fill" = "Green"))
+```
+
+```{r}
+## Splitting data into Train and Test Data Ser
+
+seed = 1000 # setting Seed
+set.seed(seed)
+x = sample.split(data$Personal.Loan, SplitRatio = 0.7)
+TrainDS = subset(data, x==TRUE)
+TestDS = subset(data,x==FALSE)
+TrainDS_RF = TrainDS
+TestDS_RF = TestDS
+
+```
+
+Model building
+
+```{r}
+# CART Modelling
+# setting CART Parameters
+cartParameters = rpart.control(minsplit = 15, cp =0.009,xval = 10)
+cartModel = rpart(formula = TrainDS$Personal.Loan~ .,data = TrainDS, method = "class", control = cartParameters)
+cartModel
+
+```
+
+```{r}
+# plotting the model
+fancyRpartPlot(cartModel)
+
+```
+```{r}
+printcp(cartModel)
+
+```
+
+```{r}
+plotcp(cartModel)
+
+```
+
+The Built Cart tree have scope for Pruning as we see form the above plot considering the lowest error
+
+```{r}
+# Fnding the best CP
+
+bestCP = cartModel$cptable[which.min(cartModel$cptable[,"xerror"]), "CP"]
+bestCP
+
+
+```
+
+Best CP is 0.009
+
+```{r}
+## pruning Tree
+
+pTree = prune(cartModel,cp = bestCP, "CP")
+pTree
+
+```
+
+
+```{r}
+#Plotting Pruned Tree
+fancyRpartPlot(pTree, main = "Pruned Tree")
+
+```
+
+```{r}
+
+printcp(pTree)
+```
+
+The final tree is built with lowest xerror and 7 splits
+
+
+```{r}
+## CART model Performance on the Training Data
+
+# Prediction
+
+TrainDS$Prediction = predict(pTree,TrainDS, type = "class")
+TrainDS$Probability = predict(pTree,TrainDS, Type = "Prob")[,"1"]
+head(TrainDS) #Prediction and probability columns added to Training Data 
+
+# Confusion Matrix
+
+tb1_TrDS_CART = table(TrainDS$Prediction, TrainDS$Personal.Loan)
+tb1_TrDS_CART
+```
+
+
+
+```{r}
+# Classification Error Rate / Misclassification
+
+CER_TrDS = (tb1_TrDS_CART[1,2]+tb1_TrDS_CART[2,1])/sum(tb1_TrDS_CART)
+CER_TrDS
+
+```
+Classification Error or Erro is 1.3%
+
+```{r}
+# Accuracy of the Model
+# As we know that accuracy is 1-Error
+
+Acc_TrDS = 1 - CER_TrDS
+Acc_TrDS
+
+```
+
+Accuracy of the model is 98.7$
+
+```{r}
+# True Positive Rate / Sensitivity
+
+TPR_TrDS=tb1_TrDS_CART[2,2]/(tb1_TrDS_CART[1,2]+tb1_TrDS_CART[2,2])
+
+TPR_TrDS
+```
+
+TPR / Sensiivity is 0.9074627 / 90.7%
+
+```{r}
+# True negative	Rate or specificity:
+
+TNR_TrDS=tb1_TrDS_CART[1,1]/(tb1_TrDS_CART[1,1]+tb1_TrDS_CART[2,1]) 
+TNR_TrDS
+```
+
+TNR / Specificity is  0.9949255
+
+```{r}
+# Creating Decile and chopping into buckets
+
+prob_TrDS_CART = seq(0,1,length = 11)
+qt_TrDS_CART = quantile(TrainDS$Probability,prob_TrDS_CART)
+qt_TrDS_CART
+
+```
+
+```{r}
+TrainDS$deciles = cut(TrainDS$Probability, unique(qt_TrDS_CART),include.lowest = TRUE, right = TRUE)
+table(TrainDS$deciles)
+
+```
+Three different buckets were created based on a specific number interval
+Above 0-0.00494 is one bucket, 0.00494 - 0.134 in one bucket and 0.134-1 in the kast bucket
+
+
+```{r}
+# Rank Ordering Table
+
+TrainDS = data.table(TrainDS)
+rankTbl_TrDS_CART = TrainDS[, list(
+ cnt = length(Personal.Loan),
+ cnt_tar1 = sum(Personal.Loan == 1),
+ cnt_tar0 = sum(Personal.Loan == 0)),
+ by=deciles][order(-deciles)]
+rankTbl_TrDS_CART$resp_rate = round(rankTbl_TrDS_CART$cnt_tar1 /
+rankTbl_TrDS_CART$cnt,4)*100;
+rankTbl_TrDS_CART$cum_resp = cumsum(rankTbl_TrDS_CART$cnt_tar1)
+rankTbl_TrDS_CART$cum_non_resp = cumsum(rankTbl_TrDS_CART$cnt_tar0)
+rankTbl_TrDS_CART$cum_rel_resp = round(rankTbl_TrDS_CART$cum_resp / sum(rankTbl_TrDS_CART$cnt_tar1),4)*100
+rankTbl_TrDS_CART$cum_rel_non_resp = round(rankTbl_TrDS_CART$cum_non_resp / sum(rankTbl_TrDS_CART$cnt_tar0),4)*100
+rankTbl_TrDS_CART$ks = abs(rankTbl_TrDS_CART$cum_rel_resp - rankTbl_TrDS_CART$sum_rel_non_resp)
+print(rankTbl_TrDS_CART)
+
+```
+
+
+```{r}
+# auc,ks & gini computing methods 
+
+predObj_TrDS = prediction(TrainDS$Probability, TrainDS$Personal.Loan)
+perf_TrDS = performance(predObj_TrDS, "tpr" , "fpr")
+plot(perf_TrDS)
+
+```
+
+ROC curve has been plotted
+
+```{r}
+ks_TrDS = max(perf_TrDS@y.values[[1]]-perf_TrDS@x.values[[1]])
+auc_TrDS = performance(predObj_TrDS, "auc")
+auc_TrDS = as.numeric(auc_TrDS@y.values)
+gini_TrDS = ineq(TrainDS$Probability,type = "Gini")
+cat("Ks=", ks_TrDS,
+    "auc=" , auc_TrDS,
+    "gini=" , gini_TrDS)
+
+```
+
+
+```{r}
+# concordance and Discordance
+Concordance_TrDS = Concordance(actuals = TrainDS$Personal.Loan, predictedScores = TrainDS$Probability)
+Concordance_TrDS 
+
+```
+
+Concordance is very good since it shows 96% which means the mode is very good
+
+
+```{r}
+# Root Mean Square Error (RMSE)
+# computed considering the personal loan as a continous variable or number
+RMSE_TrDS = rmse(TrainDS$Personal.Loan,TrainDS$Prediction)
+RMSE_TrDS 
+
+```
+Root MEan Square Error is 0.1160809 / 11%
+
+
+```{r}
+# Mean Absolute Error considering Personal Loan as a number
+MAE_TrDS = mae(TrainDS$Personal.Loan, TrainDS$Prediction)
+MAE_TrDS
+
+```
+
+Mean Absolute Error is 0.0135 / 1.3%
+
+```{r}
+## Model perofrmance of Test Data on the built model
+
+# Prediction
+
+TestDS$Prediction=predict(pTree, TestDS, type = "class")
+TestDS$Probability=predict(pTree, TestDS, type = "prob")[ ,'1']
+
+# Confusion MAarix
+
+tb1_TeDS=table(TestDS$Prediction, TestDS$Personal.Loan)
+print(tb1_TeDS)
+
+```
+
+```{r}
+# Classification Error Computation
+
+CeR_TeDS=(tb1_TeDS[1,2]+tb1_TeDS[2,1])/ sum(tb1_TeDS)
+CeR_TeDS
+
+```
+Classificaiton Error Rate on Test data is 0.01472557 / 1.5%
+
+
+```{r}
+# Computing Accuracy
+
+Accuracy_TeDS = 1-CeR_TeDS # Since Accuracy is 1-Error
+Accuracy_TeDS 
+
+```
+
+Accuracy of the model on the testing data is 98.5% which is quite similar tot he one of the train data
+
+```{r}
+# finding True positive rate / Sensitivity
+TPR_TeDS=tb1_TeDS[2,2]/(tb1_TeDS[1,2]+tb1_TeDS[2,2])
+TPR_TeDS
+
+```
+
+```{r}
+# Finding True Negative Rate / Specificity
+TNR_TeDS = tb1_TeDS[1,1]/ (tb1_TeDS[1,1]+tb1_TeDS[2,1])
+TNR_TeDS
+```
+```{r}
+# Creating Decile and chopping them to buckets
+prob_TeDS_CART = seq(0,1,length = 11)
+qt_TeDS_CART = quantile(TestDS$Probability, prob_TeDS_CART)
+qt_TeDS_CART
+
+```
+
+As we observe that most of the data falls between 90% - 100% bucket
+Almost 86% of the response falls in that bucket
+
+```{r}
+TestDS$deciles = cut(TestDS$Probability, unique(qt_TeDS_CART),include.lowest = TRUE, right = TRUE)
+table(TestDS$deciles)
+
+```
+
+```{r}
+## Model perofrmance measures on Test Data
+
+# Rank Order Table
+
+testDT = data.table(TestDS)
+rankTbl_TeDS_CART = testDT[, list(
+ cnt = length(Personal.Loan),
+ cnt_tar1 = sum(Personal.Loan == 1),
+ cnt_tar0 = sum(Personal.Loan == 0)),
+ by=deciles][order(-deciles)]
+rankTbl_TeDS_CART$resp_rate = round(rankTbl_TeDS_CART$cnt_tar1 /
+rankTbl_TeDS_CART$cnt,4)*100
+rankTbl_TeDS_CART$cum_resp = cumsum(rankTbl_TeDS_CART$cnt_tar1)
+rankTbl_TeDS_CART$cum_non_resp = cumsum(rankTbl_TeDS_CART$cnt_tar0)
+rankTbl_TeDS_CART$cum_rel_resp = round(rankTbl_TeDS_CART$cum_resp /
+sum(rankTbl_TeDS_CART$cnt_tar1),4)*100
+rankTbl_TeDS_CART$cum_rel_non_resp = round(rankTbl_TeDS_CART$cum_non_resp /
+sum(rankTbl_TeDS_CART$cnt_tar0),4)*100
+rankTbl_TeDS_CART$ks = abs(rankTbl_TeDS_CART$cum_rel_resp -
+rankTbl_TeDS_CART$cum_rel_non_resp) #ks
+rankTbl_TeDS_CART
+
+```
+
+
+```{r}
+# Calculating auc,ks & gini computing methods on Test data
+
+predObj_TeDS = prediction(TestDS$Probability, TestDS$Personal.Loan)
+perf_TeDS = performance(predObj_TeDS, "tpr" , "fpr")
+plot(perf_TeDS)
+```
+
+
+```{r}
+
+ks_TeDS = max(perf_TeDS@y.values[[1]]-perf_TeDS@x.values[[1]])
+auc_TeDS = performance(predObj_TeDS, "auc")
+auc_TeDS = as.numeric(auc_TeDS@y.values)
+gini_TeDS = ineq(TestDS$Probability,type = "Gini")
+cat("Ks=", ks_TeDS,
+    "auc=" , auc_TeDS,
+    "gini=" , gini_TeDS)
+
+```
+
+```{r}
+# Concordance and Discordance Ratio Computation
+
+Concordance_TeDS = Concordance(actuals = TestDS$Personal.Loan, predictedScores = TestDS$Probability)
+Concordance_TeDS 
+
+```
+
+Concordance is good in the testing data as well. It is 94.2%
+
+
+```{r}
+# Root Mean Square Error (RMSE)
+# computed considering the personal loan as a continous variable or number
+
+RMSE_TeDS = rmse(TestDS$Personal.Loan,TestDS$Prediction)
+RMSE_TeDS 
+```
+
+
+
+```{r}
+# Mean Absolute Error considering Personal Loan as a number
+
+MAE_TeDS = mae(TestDS$Personal.Loan, TestDS$Prediction)
+MAE_TeDS
+```
+
+```{r}
+# CART model performance Table
+
+Performance_KPI = c("Classification Error Rate",
+                     "Accuracy",
+                     "TPR",
+                     "TNR",
+                     "ks",
+                     "auc",
+                     "gini",
+                     "Concordance",
+                     "RMSE*",
+                     "MAE*")
+                    
+Training_CART = c(CER_TrDS,
+                  Acc_TrDS,
+                  TPR_TrDS,
+                  TNR_TrDS,
+                  ks_TrDS,
+                  auc_TrDS,
+                  gini_TrDS,
+                  Concordance_TrDS$Concordance,
+                  RMSE_TrDS,
+                  MAE_TrDS)
+Test_CART =c(CeR_TeDS,
+                  Accuracy_TeDS,
+                  TPR_TeDS,
+                  TNR_TeDS,
+                  ks_TeDS,
+                  auc_TeDS,
+                  gini_TeDS,
+                  Concordance_TeDS$Concordance,
+                  RMSE_TeDS,
+                  MAE_TeDS)
+
+x=cbind(Performance_KPI,Training_CART,Test_CART)
+x=data.table(x)
+x$Training_CART=as.numeric(x$Training_CART)
+x$Test_CART=as.numeric(x$Test_CART)
+print(x)
+
+```
+
+* considering personal Loan as number 
+
+Model performed good both on the Training data and Teting Data. The Accuracy and Concordance level are good
+
+
+RANDOM FOREST
+
+```{r}
+## Random Forest
+
+# Building Random Forest Model
+
+TrainDS =TrainDS_RF
+TestDS=TestDS_RF
+
+rndForest=randomForest(Personal.Loan ~ ., data = TrainDS, ntree=501, mtry=5,
+nodesize=10, importance=TRUE)
+print(rndForest)
+
+```
+
+It is observed that OOB is only 1.32% and total number fo trees created are 501
+
+```{r}
+# Tree Calculation based on error rate
+
+min(rndForest$err.rate)
+
+```
+
+```{r}
+
+# Plotting Error Rates for Random Forest
+
+plot(rndForest, main = "")
+legend("topright", c("OOB", "0", "1"), text.col = 1:6, lty = 1:3, col = 1:3)
+title(main = "Error Rates Random Forest TrainDT")
+
+```
+
+After 100 the curve seems to be constant 
+
+We will start with 101 tree. Taking odd number so that we get a result in probability
+
+```{r}
+# finding importance parameter
+
+print(rndForest$importance)
+
+```
+
+
+
+
+```{r}
+# Tuning Random Forest
+
+set.seed(1000)
+set.seed(seed)
+tRndForest=tuneRF(x=TrainDS[,-which(colnames(TrainDS)=="Personal.Loan")],y=TrainDS$Personal.Loan,
+     mtryStart = 9,
+     ntreeTry = 101,
+     stepFactor = 1.2,
+     improve = 0.001,
+     trace = FALSE,
+     plot = TRUE,
+     doBest = TRUE,
+     nodesize = 10,
+     importance = TRUE )
+
+```
+```{r}
+
+# Finding important variables
+
+importance(tRndForest)
+```
+
+Income is considered most important	parameter
+
+There are also	other important	parameters likes Education, Family	Member etc
+
+
+```{r}
+# Random Forest Model Performance
+# Performance on Training Data
+
+# Prediction:
+
+TrainDS$Prediction_RF=predict(tRndForest, TrainDS, type = "class")
+TrainDS$Probability1_RF=predict(tRndForest, TrainDS, type = "prob")[,"1"]
+
+# Confusion	Matrix:
+
+tbl_TrDS_RF=table(TrainDS$Prediction_RF, TrainDS$Personal.Loan)
+tbl_TrDS_RF
+
+```
+
+
+```{r}
+# Classification	Error	Rate:
+
+CeR_TrDS_RF=(tbl_TrDS_RF[1,2]+tbl_TrDS_RF[2,1])/sum(tbl_TrDS_RF)
+CeR_TrDS_RF
+
+```
+
+```{r}
+# Accuracy:
+
+Accuracy_TrDS_RF=1-(tbl_TrDS_RF[1,2]+tbl_TrDS_RF[2,1])/sum(tbl_TrDS_RF)
+
+#accuracy (1-error rate)
+
+Accuracy_TrDS_RF
+```
+
+```{r}
+# True	positive	rate	or	sensitivity:
+
+TPR_TrDS_RF=tbl_TrDS_RF[2,2]/(tbl_TrDS_RF[1,2]+tbl_TrDS_RF[2,2])
+TPR_TrDS_RF
+```
+
+```{r}
+# True	negative	rate	or	specificity:
+
+TNR_TrDS_RF=tbl_TrDS_RF[1,1]/(tbl_TrDS_RF[1,1]+tbl_TrDS_RF[2,1]) 
+
+#Truenegative rate or specificity (TN/TN+FP)
+
+TNR_TrDS_RF
+```
+
+```{r}
+# Creating Decile and Chopping into	unique buckets:
+
+probs_TrDS_RF=seq(0,1,length=11)
+qs_TrDS_RF=quantile(TrainDS$Probability1_RF, probs_TrDS_RF)
+qs_TrDS_RF
+
+```
+
+```{r}
+# Splitting the deciles
+
+TrainDS$deciles_RF=cut(TrainDS$Probability1_RF, unique(qs_TrDS_RF),
+include.lowest = TRUE, right=TRUE)
+table(TrainDS$deciles_RF)
+
+```
+
+Three deciles has been split, first decile 0 -0.002, second decile 0.002 - 0.248, third decile 0.248 - 1 where majority of the data falls
+
+```{r}
+# Rank ordering	table computing
+
+library(data.table)
+trainDT = data.table(TrainDS)
+rankTbl_TrDS_RF = trainDT[, list(
+ cnt = length(Personal.Loan),
+ cnt_tar1= sum(Personal.Loan == 1),
+ cnt_tar0 = sum(Personal.Loan == 0)),
+ by=deciles_RF][order(-deciles_RF)]
+rankTbl_TrDS_RF$resp_rate = round(rankTbl_TrDS_RF$cnt_tar1 /
+rankTbl_TrDS_RF$cnt,4)*100
+rankTbl_TrDS_RF$cum_resp = cumsum(rankTbl_TrDS_RF$cnt_tar1)
+rankTbl_TrDS_RF$cum_non_resp = cumsum(rankTbl_TrDS_RF$cnt_tar0)
+rankTbl_TrDS_RF$cum_rel_resp = round(rankTbl_TrDS_RF$cum_resp /
+sum(rankTbl_TrDS_RF$cnt_tar1),4)*100
+rankTbl_TrDS_RF$cum_rel_non_resp = round(rankTbl_TrDS_RF$cum_non_resp /
+sum(rankTbl_TrDS_RF$cnt_tar0),4)*100
+rankTbl_TrDS_RF$ks = abs(rankTbl_TrDS_RF$cum_rel_resp -
+rankTbl_TrDS_RF$cum_rel_non_resp) #ks
+rankTbl_TrDS_RF
+```
+
+```{r}
+
+# auc,ks and gini Computing:
+
+predObj_TrDS_RF = prediction(TrainDS$Probability1_RF, TrainDS$Personal.Loan)
+perf_TrDS_RF = performance(predObj_TrDS_RF, "tpr", "fpr")
+plot(perf_TrDS_RF) #ROC curve
+
+```
+
+
+```{r}
+# Computing ks
+
+ks_TrDS_RF = max(perf_TrDS_RF@y.values[[1]]-perf_TrDS_RF@x.values[[1]]) #ks
+auc_TrDS_RF = performance(predObj_TrDS_RF,"auc");
+auc_TrDS_RF= as.numeric(auc_TrDS_RF@y.values) #auc
+gini_TrDS_RF= ineq(TrainDS$Probability1_RF, type="Gini") #gini
+cat("ks=", ks_TrDS_RF,
+ "auc=", auc_TrDS_RF,
+ "gini=", gini_TrDS_RF)
+
+```
+
+```{r}
+# Concordance and Discordance ratios: computing
+
+Concordance_TrDS_RF=Concordance(actuals=TrainDS$Personal.Loan,
+predictedScores=TrainDS$Probability1_RF)
+Concordance_TrDS_RF
+```
+
+
+```{r}
+# Root-Mean	Square Error (RMSE*):
+
+RMSE_TrDS_RF=rmse(TrainDS$Personal.Loan, TrainDS$Prediction_RF)
+RMSE_TrDS_RF
+```
+
+```{r}
+# Mean absolute error (MAE*):
+
+MAE_TrDS_RF=mae(TrainDS$Personal.Loan, TrainDS$Prediction_RF)
+MAE_TrDS_RF
+
+```
+```{r}
+# Test data Performance	on built Model
+
+# Prediction:
+
+TestDS$Prediction_RF=predict(tRndForest, TestDS, type = "class")
+TestDS$Probability1_RF=predict(tRndForest, TestDS, type = "prob")[,"1"]
+
+# Confusion	Matrix:
+
+tbl_TeDS_RF=table(TestDS$Prediction_RF, TestDS$Personal.Loan)
+tbl_TeDS_RF
+```
+
+
+```{r}
+# Classification Error Rate:
+
+CeR_TeDS_RF=(tbl_TeDS_RF[1,2]+tbl_TeDS_RF[2,1])/sum(tbl_TeDS_RF)
+CeR_TeDS_RF
+
+```
+
+```{r}
+# Accuracy:
+
+Accuracy_TeDS_RF=1-CeR_TeDS_RF
+Accuracy_TeDS_RF
+```
+
+```{r}
+# True positive rate or sensitivity:
+
+TPR_TeDS_RF=tbl_TeDS_RF[2,2]/(tbl_TeDS_RF[1,2]+tbl_TeDS_RF[2,2]) 
+TPR_TeDS_RF
+
+```
+
+```{r}
+# True negative	rate or	specificity:
+
+TNR_TeDS_RF=tbl_TeDS_RF[1,1]/(tbl_TeDS_RF[1,1]+tbl_TeDS_RF[2,1]) 
+TNR_TeDS_RF
+```
+
+
+```{r}
+# Creating	Decile and Chopping into unique buckets:
+
+probs_TeDS_RF=seq(0,1,length=11)
+qs_TeDS_RF=quantile(TestDS$Probability1_RF, probs_TeDS_RF)
+qs_TeDS_RF
+
+```
+
+
+```{r}
+# Splitting Deciles
+
+TestDS$deciles_RF=cut(TestDS$Probability1_RF, unique(qs_TeDS_RF),
+include.lowest = TRUE, right=TRUE)
+table(TestDS$deciles_RF)
+
+```
+
+```{r}
+# Rank ordering	table on RF Test Data
+
+testDT = data.table(TestDS)
+rankTbl_TeDS_RF = testDT[, list(
+ cnt = length(Personal.Loan),
+ cnt_tar1 = sum(Personal.Loan == 1),
+ cnt_tar0 = sum(Personal.Loan == 0)),
+ by=deciles_RF][order(-deciles_RF)]
+rankTbl_TeDS_RF$resp_rate = round(rankTbl_TeDS_RF$cnt_tar1 /
+rankTbl_TeDS_RF$cnt,4)*100
+rankTbl_TeDS_RF$cum_resp = cumsum(rankTbl_TeDS_RF$cnt_tar1)
+rankTbl_TeDS_RF$cum_non_resp = cumsum(rankTbl_TeDS_RF$cnt_tar0)
+rankTbl_TeDS_RF$cum_rel_resp = round(rankTbl_TeDS_RF$cum_resp /
+sum(rankTbl_TeDS_RF$cnt_tar1),4)*100
+rankTbl_TeDS_RF$cum_rel_non_resp = round(rankTbl_TeDS_RF$cum_non_resp /
+sum(rankTbl_TeDS_RF$cnt_tar0),4)*100
+rankTbl_TeDS_RF$ks = abs(rankTbl_TeDS_RF$cum_rel_resp -
+rankTbl_TeDS_RF$cum_rel_non_resp) #ks
+rankTbl_TeDS_RF
+
+```
+
+
+
+```{r}
+# auc, ks and gini Computing:
+
+predObj_TeDS_RF = prediction(TestDS$Probability1_RF, TestDS$Personal.Loan)
+perf_TeDS_RF = performance(predObj_TeDS_RF, "tpr", "fpr")
+plot(perf_TeDS_RF) #ROC curve
+
+```
+
+
+```{r}
+
+ks_TeDS_RF = max(perf_TeDS_RF@y.values[[1]]-perf_TeDS_RF@x.values[[1]])
+#ksTestDS
+auc_TeDS_RF = performance(predObj_TeDS_RF,"auc")
+auc_TeDS_RF = as.numeric(auc_TeDS_RF@y.values) #auc
+gini_TeDS_RF = ineq(TestDS$Probability1_RF, type="Gini") #gini
+cat("ks_TeDS_RF=", ks_TeDS_RF,
+    "auc_TeDS_RF=", auc_TeDS_RF,
+ "gini_TeDS_RF=", gini_TeDS_RF)
+
+```
+
+
+```{r}
+# Concordance and Discordance ratios:
+
+Concordance_TeDS_RF=Concordance(actuals=TestDS$Personal.Loan,
+predictedScores=TestDS$Probability1_RF)
+Concordance_TeDS_RF
+
+```
+
+```{r}
+# Root-Mean	Square Error(RMSE*):
+
+RMSE_TeDS_RF=rmse(TestDS$Personal.Loan, TestDS$Prediction_RF)
+RMSE_TeDS_RF
+```
+
+
+```{r}
+# Mean absolute	error (MAE*):
+
+MAE_TeDS_RF=mae(TestDS$Personal.Loan, TestDS$Prediction_RF)
+MAE_TeDS_RF
+
+
+```
+
+```{r}
+# CART & Random	Forest Model Summary
+
+Performance_KPI = c("Classification Error Rate",
+                     "Accuracy",
+                     "TPR",
+                     "TNR",
+                     "ks",
+                     "auc",
+                     "gini",
+                     "Concordance",
+                     "RMSE*",
+                     "MAE*")
+
+Training_CART = c(CER_TrDS,
+                  Acc_TrDS,
+                  TPR_TrDS,
+                  TNR_TrDS,
+                  ks_TrDS,
+                  auc_TrDS,
+                  gini_TrDS,
+                  Concordance_TrDS$Concordance,
+                  RMSE_TrDS,
+                  MAE_TrDS)
+
+Test_CART = c(CeR_TeDS,
+            Accuracy_TeDS,
+            TPR_TeDS,
+            TNR_TeDS,
+            ks_TeDS,
+            auc_TeDS,
+            gini_TeDS,
+            Concordance_TeDS$Concordance,
+            RMSE_TeDS,
+            MAE_TeDS)
+
+Training_RF = c(CeR_TrDS_RF,
+              Accuracy_TrDS_RF,
+              TPR_TrDS_RF,
+              TNR_TrDS_RF,
+              ks_TrDS_RF,
+              auc_TrDS_RF,
+              gini_TrDS_RF,
+              Concordance_TrDS_RF$Concordance,
+              RMSE_TrDS_RF,
+              MAE_TrDS_RF)
+
+Test_RF = c(CeR_TeDS_RF,
+          Accuracy_TeDS_RF,
+          TPR_TeDS_RF,
+          TNR_TeDS_RF,
+          ks_TeDS_RF,
+          auc_TeDS_RF,
+          gini_TeDS_RF,
+          Concordance_TeDS_RF$Concordance,
+          RMSE_TeDS_RF,
+          MAE_TeDS_RF)
+
+y=cbind(Performance_KPI, Training_CART, Test_CART, Training_RF, Test_RF)
+library(data.table)
+y=data.table(y)
+y$Training_CART=as.numeric(y$Training_CART)
+y$Test_CART=as.numeric(y$Test_CART)
+y$Training_RF=as.numeric(y$Training_RF)
+y$Test_RF=as.numeric(y$Test_RF)
+print(y)
+
+```
+
+Conclusion on the model performance
+
+CART and Random	Forest Model Summary
+
+All	key	performance	indicators,	indicating built CART model is	very	good and showing very good	performance	on Train and Test datasets
+Performance	of Random Forest is even better	than CART (As the above table suggests) Both models are	very good and as a choice of preference, would select Random	Forest for further business	working	due	to it’s	better performance over CART model
+
+Source of Data: "Thera Bank_Personal_Loan_Modelling-dataset-1.xlsx"
