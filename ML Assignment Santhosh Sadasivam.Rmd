@@ -1,0 +1,692 @@
+---
+title: "Machine Learning Assignment"
+author: "Santhosh Sadasivam"
+date: "2/18/2020"
+output:
+  word_document: default
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Project Description:
+
+This project requires us to understand what mode of transport employees prefers to commute to their office. The attached data 'Cars.csv' includes employee information about their mode of transport as well as their personal and professional details like age, salary, work exp. We need to predict whether or not an employee will use Car as a mode of transport. Also, which variables are a significant predictor behind this decision?
+
+Data Dictionary:
+
+Age	Age of the Employee in Years
+Gender	Gender of the Employee
+Engineer	For Engineer =1 , Non Engineer =0
+MBA	For MBA =1 , Non MBA =0
+Work Exp	Experience in years
+Salary	Salary in Lakhs per Annum
+Distance	Distance in Kms from Home to Office
+license	If Employee has Driving Licence -1, If not, then 0
+Transport	Mode of Transport
+ 
+
+```{r}
+# Including the required livraries
+library(caret)
+library(dplyr)
+library(caTools)
+library(ggplot2)
+library(psych)
+library(mice)
+library(ppcor)
+library(VIM)
+library(ggpubr)
+library(gridExtra)
+library(devtools)
+library(DataExplorer)
+library(DMwR)
+library(gbm)
+library(ROCR)
+library(class)
+library(ineq)
+library(xgboost)
+library(fmsb)
+library(car)
+library(rpart)
+library(corrplot)
+library(e1071)
+library(ipred)
+library(ROCR)
+```
+
+```{r}
+# Setting up working directory and importing dataset
+setwd("C:/Users/santhosh/Desktop/R programming/Machine Learning/ML Assignment")
+getwd()
+data = read.csv("Cars.csv",header = TRUE)
+
+```
+
+```{r}
+# exploring the data - Univarite Analysis
+names(data)
+print(head(data))
+dim(data)
+```
+
+Names of the Data
+1. The data has p variables as follows - 1. Age, 2.Gender, 3.Engineer, 4.MBA, 5.Work Experience, 6.Saalry, 7.Distance, 8.License, 9.Transport
+
+Structure of Data:
+1. Data set has 444 Rows and 9 Columns
+
+
+```{r}
+print(str(data))
+```
+Structure of Data
+
+out of the 9 variables there are two factors(gender - 2 levels,transport - 3 Levels) two numeric(salary & distance) and the rest are integers (Continous numbers)
+
+```{r}
+print(summary(data))
+```
+
+1.There are 128 female employees and 316 male employees
+2.Out of total emplotees 83 of them use two wheeler, 61 of them use car & 300 of thm use public transport which is the mahority of choice for the employees
+3.There is one NA in MBA variable
+4. There are employees travelling from 3.2 KM to 23.40 KM 
+5. The min age of an employee is 18 and the max age is 43
+6. Majority fo the employees are engineers as the mean suggests - 75.45%
+7. It shows the work epxeirence of emloyees starts from 0 to 24 years. It means there are interns or freshers in the company.
+
+
+```{r}
+# Finding missing values
+print(sum(is.na(data)))
+data = na.omit(data)
+print(sum(is.na(data)))
+dim(data)
+```
+Removing NA:
+
+. We have omitted the data since it is very negligible, less than 3%. So there are no NA in the dataset now.
+
+. The dimension of the data is 443 rows and 9 columns as aagainst to the original 444 rows and 9 columns.
+
+. One row has been deleted since we removed the NA which is present in that row
+
+. As our objective is to predict employees using car to commute to office we can convert the dependent variable Transport as Car, where employees usng car will be 1 and other modes of transport like two wheeler and public transport will be 0
+
+```{r}
+data$Car = ifelse(data$Transport=="Car",1,0)
+data$Gender=ifelse(data$Gender=="Female",0,1)
+data=data[,-9]
+summary(data)
+attach(data)
+```
+Converting dependent variable into two factors
+
+. We ahve converted the dependent variable inot he label Car with two factors
+
+```{r}
+# Imputing missing values
+aggr(data,prop = F,cex.axis = 0.7,numbers=T)
+
+```
+. As we see hte above graph we dont see any missing values in the revised dataset
+
+## Univariate Analysis
+
+```{r}
+# Univariate Analysis
+colnames(data[,sapply(data, is.numeric)]) 
+par(mfrow=c(2, 2), oma=c(0,0,3,0))
+boxplot(data$Age,main ="Age")
+boxplot(data$Gender,main ="Gender")
+boxplot(data$Engineer,main ="Engineer")
+boxplot(data$MBA,main ="MBA")
+boxplot(data$Work.Exp,main ="Work Exp")
+boxplot(data$license,main ="License")
+boxplot(data$Salary,main ="Salary")
+boxplot(data$Distance,main ="Distance")
+
+```
+1. from the boxplot we see that age, work exp & salary have outliers. 
+2. MBS, Engineers, Gender, License seems to be categorical variables 
+
+```{r}
+# PLotting Histogram
+
+hist(data$Age,main ="Age", xlab=NA, ylab=NA)
+hist(data$Gender,main ="Gender", xlab=NA, ylab=NA)
+hist(data$Engineer,main ="Engineer", xlab=NA, ylab=NA)
+hist(data$MBA,main ="MBA", xlab=NA, ylab=NA)
+hist(data$Work.Exp,main ="Work Exp", xlab=NA, ylab=NA)
+hist(data$license,main ="License", xlab=NA, ylab=NA)
+hist(data$Salary,main ="Salary", xlab=NA, ylab=NA)
+hist(data$Distance,main ="Distance", xlab=NA, ylab=NA)
+hist(data$Car,main = "Car",xlab = NA,ylab = NA)
+
+```
+Inferences from Histogram
+
+1. Age seems to be distributd normally
+2. Gender has two factors and there are more male employees compared to female employees
+3. Engineer is again a categorical variable with more Engineers as majority class compared to emploees who are not engineers
+4. Distance seems ti be normally distributed (but it is slightly skewed right)
+5.  MBA seems to be categorical with less number of employees have graduated MBA 
+6. Work experience seems to be right skewed as more number of employees fall within 0-10 years of experience
+7. License is another categorical variable with number of employees dont ahve their licnese
+8. Salary is again skewed right and as we see more number fo emoloyees fall between 10-15 Lakhs
+9. Car is Categorical and there are less number of employees who use car probably 1/3rd 
+
+```{r}
+# Bi Variate Analysis - Using variable Car as dependent variable and pairing it with other independent variables
+
+table(data$Car)
+
+
+#Dependent variable vs continuous independent variables
+colnames(data[,sapply(data, is.numeric)])
+ggplot(data, aes(x = Age)) + geom_histogram(bins = 30, fill = "lightblue", col = "blue")
+
+
+# both categorical
+ggplot(data, aes(x = Age)) + geom_bar(aes(fill = Car))
+
+# Few more Bivariate ANalysis
+plot_histogram(data, binary_as_factor = FALSE, geom_histogram_args = list("fill" = "red"))
+
+plot_boxplot(data, by="Car", binary_as_factor = FALSE, geom_boxplot_args = list("fill"= "Blue"))
+
+```
+Outliers
+
+As we obseve most of the continous variables has outliers but they are not significantly high or lwo so we will not treat these outliers and keep these observations for future analysis
+
+
+
+```{r}
+# Bi-Variate Analysis
+corp = cor(data)
+corrplot(corp)
+#Correlation Plot
+datamatrix = cor(data)
+corrplot(datamatrix, method = 'number',type = 'upper' ,number.cex = 1.0)
+
+#Correlation Significance using p-values of t-statistics
+corsigni = data.frame(pcor(data,method = "pearson"))
+corsigni
+
+
+
+```
+
+!. Age and work experince are highly co-related
+2. Age and Salary are nect highly co-related variables
+3. Work exp and Salary is also highly co-related
+```{r}
+# proposition of the dependent variable car 
+resp <- sum(data$Car/nrow(data))
+resp
+```
+
+```{r}
+# Creating Factor Variables - Updating hte numeric variables into factos
+
+data$Car <- as.factor(data$Car)
+data$Gender <- as.factor(data$Gender)
+data$Engineer <- as.factor(data$Engineer)
+data$MBA <- as.factor(data$MBA)
+data$license <- as.factor(data$license)
+
+```
+
+```{r}
+# proportion table of the dependent variable Car
+summary(data$Car)
+prop.table(table(data$Car))
+```
+
+
+```{r}
+# Splitting the data set into Traina nd Test for modelling
+set.seed(1000)
+index = createDataPartition(data$Car, p = 0.7, list = FALSE)
+train_data = data[index, ]
+test_data  = data[-index, ]
+
+# Proposition of Train and Test Data
+prop.table(table(train_data$Car))
+prop.table(table(test_data$Car))
+```
+
+The data split is fairly good as both train and test data is quite similar
+
+```{r}
+# Using SMOTE to balance the Train Data
+# The dependent varible should be a factor.
+
+class(train_data$Car)
+
+balanced.train_data = SMOTE(Car ~.,train_data, perc.over = 600, k= 5, perc.under = 200)
+table(balanced.train_data$Car)
+ggplot(data = balanced.train_data, aes(balanced.train_data$Car))+
+  labs(x = 'Car',y ='Count')+
+  geom_bar(fill='red',col = 'white',width=0.5)+
+  scale_fill_manual(values = c('navy','green','skyblue'))+
+  theme(aspect.ratio = 1)
+
+```
+Using SMote we ahve balanced the data set to above 50% as compared to the original 13% by using K=5. Now this balanced data will give us a better result will performing different models
+ 
+## Predictive Modelling
+. Predicting if an employee uses Car or not is a Classification problem so we build calssification models
+. The dependent variable here is "Car"
+. We will use the balanced data created using SMOTE
+. We will use hte original splitted test data for testing the models
+. We will use Logistic Regression, KNN and Naive Bayes techniques to build predictive models to predict hte employee moe of transpaort as car
+. We will then use Bagging and Boosting to check if it improves the prediction
+. Using the model performance measures we will compare these models
+
+```{r}
+## ModelBuilding 
+
+#Logistic Regression
+
+logit.train_data = balanced.train_data
+str(logit.train_data)
+
+LRmodel1=glm(Car~.,data=logit.train_data,family = 'binomial')
+summary(LRmodel1)
+
+vif(LRmodel1)
+# VIF of Work.Exp is max so we drop Work.Exp variable and build a new model and check the vif again
+
+logit.train_data = subset(logit.train_data[,-c(4)])
+
+LRmodel2 = glm(Car~.,data=logit.train_data,family = 'binomial')
+summary(LRmodel2)
+
+#The significance of lot of variables has increased so we will check the VIF again
+vif(LRmodel2)
+
+# VIFs are within the acceptable range now. We will Drop MBA variable because it is not significant.
+# Now we check the AIC.If the AIC decreases, we must drop these variables from the final model.
+logit.train_data = subset(logit.train_data[,-c(3)])
+
+LRmodel3 = glm(Car~.,data=logit.train_data,family = 'binomial')
+summary(LRmodel3)
+
+# The AIC of LRmodel3 is less than that of LRmodel2. Hence, our final logistic regression model will be LRModel3
+
+# Interpretting the logistic regression model
+
+#Log Odds Ratio
+a=coef(LRmodel3)
+#Odds
+b=exp(coef(LRmodel3))
+#Probablity
+c=exp(coef(LRmodel3))/(1+exp(coef(LRmodel3)))
+
+```
+
+
+```{r}
+# Model Acceptability
+
+# Insample
+pred = predict(LRmodel3,newdata = logit.train_data,type = 'response')
+train_Car_pred = ifelse(pred >0.5,1,0)
+train_Car_actual = logit.train_data$Car
+tab.logit.train_data = table(train_Car_actual,train_Car_pred)
+tab.logit.train_data
+
+```
+
+```{r}
+# Model performance measures
+Accuracy.logit.train = sum(diag(tab.logit.train_data)/sum(tab.logit.train_data))
+Accuracy.logit.train
+Sensitivity.logit.train = tab.logit.train_data[2,2]/(tab.logit.train_data[2,1]+tab.logit.train_data[2,2])
+Sensitivity.logit.train
+
+Specificity.logit.train = tab.logit.train_data[1,1]/(tab.logit.train_data[1,1]+tab.logit.train_data[1,2])
+Specificity.logit.train
+
+Precision.logit.train = tab.logit.train_data[2,2]/(tab.logit.train_data[1,2]+tab.logit.train_data[2,2])
+Precision.logit.train
+
+auc.perf.logit=performance(prediction(train_Car_pred,train_Car_actual),"auc")
+AUC.logit.train = attr(auc.perf.logit,"y.values")[[1]]
+AUC.logit.train
+
+```
+
+```{r}
+# Testing data validation
+
+pred = predict(LRmodel3,newdata = test_data,type = 'response')
+test_data_pred = ifelse(pred >0.5,1,0)
+test_data_actual = test_data$Car
+tab.logit.test_data = table(test_data_actual,test_data_pred)
+tab.logit.test_data
+
+# Model performance on Test Data
+
+Accuracy.logit.test_data = sum(diag(tab.logit.test_data)/sum(tab.logit.test_data))
+Accuracy.logit.test_data
+
+Sensitivity.logit.test_data = tab.logit.test_data[2,2]/(tab.logit.test_data[2,1]+tab.logit.test_data[2,2])
+Sensitivity.logit.test_data
+
+Specificity.logit.test_data = tab.logit.test_data[1,1]/(tab.logit.test_data[1,1]+tab.logit.test_data[1,2])
+Specificity.logit.test_data
+
+Precision.logit.test_data = tab.logit.test_data[2,2]/(tab.logit.test_data[1,2]+tab.logit.test_data[2,2])
+Precision.logit.test_data
+
+auc.perf.logit=performance(prediction(test_data_pred,test_data_actual),"auc")
+AUC.logit.test = attr(auc.perf.logit,"y.values")[[1]]
+AUC.logit.test
+
+```
+
+
+```{r}
+# kNN (K Nearest Neighbour) Modelling
+
+#Normalise the variables
+normalise = function(x){
+  return ((x-min(x))/(max(x)-min(x)))
+  }
+
+# Balancing the Train Data
+
+knn.train_data = balanced.train_data
+str(knn.train_data)
+knn.train_data$Engineer = as.numeric(as.character(knn.train_data$Engineer))
+knn.train_data$MBA = as.numeric(as.character(knn.train_data$MBA))
+knn.train_data$Gender = as.numeric(as.character(knn.train_data$Gender))
+knn.train_data$license = as.numeric(as.character(knn.train_data$license))
+knn.train_data$Age = normalise(knn.train_data$Age)
+knn.train_data$Work.Exp = normalise(knn.train_data$Work.Exp)
+knn.train_data$Salary = normalise(knn.train_data$Salary)
+knn.train_data$Distance = normalise(knn.train_data$Distance)
+
+knn.test = test_data
+knn.test$Engineer = as.numeric(as.character(knn.test$Engineer))
+knn.test$MBA = as.numeric(as.character(knn.test$MBA))
+knn.test$Gender = as.numeric(as.character(knn.test$Gender))
+knn.test$license = as.numeric(as.character(knn.test$license))
+knn.test$Age = normalise(knn.test$Age)
+knn.test$Work.Exp = normalise(knn.test$Work.Exp)
+knn.test$Salary = normalise(knn.test$Salary)
+knn.test$Distance = normalise(knn.test$Distance)
+
+#knn3
+pred = knn(train = knn.train_data[,-1], test =knn.test[-1], knn.train_data$Car, k = 3) 
+tab.knn.test = table(knn.test$Car, pred)
+tab.knn.test
+
+
+Accuracy.knn = sum(diag(tab.knn.test)/sum(tab.knn.test))
+Accuracy.knn
+
+Sensitivity.knn = tab.knn.test[2,2]/(tab.knn.test[2,1]+tab.knn.test[2,2])
+Sensitivity.knn
+
+Specificity.knn = tab.knn.test[1,1]/(tab.knn.test[1,1]+tab.knn.test[1,2])
+Specificity.knn
+
+Precision.knn = tab.knn.test[2,2]/(tab.knn.test[1,2]+tab.knn.test[2,2])
+Precision.knn
+
+auc.perf.kNN=performance(prediction(as.numeric(as.character(pred)),knn.test$Car),"auc")
+AUC.knn = attr(auc.perf.kNN,"y.values")[[1]]
+AUC.knn
+```
+
+```{r}
+
+# Naive Bayes Model
+
+# Dependent variable should be factor
+
+nb.train = balanced.train_data
+str(nb.train)
+nb.test = test_data
+
+nbModel = naiveBayes(x = nb.train[,-1], y = nb.train$Car)
+
+#Model Acceptability
+#Insample
+predNB.train = predict(nbModel, nb.train, type = "class")
+tab.nb.train = table(nb.train$Car,predNB.train)
+tab.nb.train
+
+Accuracy.nb.train = sum(diag(tab.nb.train)/sum(tab.nb.train))
+Accuracy.nb.train
+
+Sensitivity.nb.train = tab.nb.train[2,2]/(tab.nb.train[2,1]+tab.nb.train[2,2])
+Sensitivity.nb.train
+
+Specificity.nb.train = tab.nb.train[1,1]/(tab.nb.train[1,1]+tab.nb.train[1,2])
+Specificity.nb.train
+
+Precision.nb.train = tab.nb.train[2,2]/(tab.nb.train[1,2]+tab.nb.train[2,2])
+Precision.nb.train
+
+auc.perf.nb=performance(prediction(as.numeric(as.character(predNB.train)),nb.train$Car),"auc")
+AUC.nb.train = attr(auc.perf.nb,"y.values")[[1]]
+AUC.nb.train
+
+#On validation Data
+predNB = predict(nbModel, nb.test, type = "class")
+tab.nb.test = table(nb.test$Car, predNB)
+tab.nb.test
+
+Accuracy.nb.test = sum(diag(tab.nb.test)/sum(tab.nb.test))
+Accuracy.nb.test
+
+Sensitivity.nb.test = tab.nb.test[2,2]/(tab.nb.test[2,1]+tab.nb.test[2,2])
+Sensitivity.nb.test
+
+Specificity.nb.test = tab.nb.test[1,1]/(tab.nb.test[1,1]+tab.nb.test[1,2])
+Specificity.nb.test
+
+Precision.nb.test = tab.nb.test[2,2]/(tab.nb.test[1,2]+tab.nb.test[2,2])
+Precision.nb.test
+
+auc.perf.nb=performance(prediction(as.numeric(as.character(predNB)),nb.test$Car),"auc")
+AUC.nb.test = attr(auc.perf.nb,"y.values")[[1]]
+AUC.nb.test
+
+
+```
+
+```{r}
+# Bagging
+
+bagging.train = train_data
+bagging.test= test_data
+bagging.model = bagging(Car~.,
+                        data = bagging.train,
+                        control = rpart.control(maxdepth = 5, minsplit = 10))
+
+#Insample performance
+bagging.train$pred.Car = predict(bagging.model,bagging.train)
+tab.bag.train = table(bagging.train$Car,bagging.train$pred.Car)
+tab.bag.train
+sum(diag(tab.bag.train)/sum(tab.bag.train))
+
+Accuracy.bag.train = sum(diag(tab.bag.train)/sum(tab.bag.train))
+Accuracy.bag.train
+
+Sensitivity.bag.train = tab.bag.train[2,2]/(tab.bag.train[2,1]+tab.bag.train[2,2])
+Sensitivity.bag.train
+
+Specificity.bag.train = tab.bag.train[1,1]/(tab.bag.train[1,1]+tab.bag.train[1,2])
+Specificity.bag.train
+
+Precision.bag.train = tab.bag.train[2,2]/(tab.bag.train[1,2]+tab.bag.train[2,2])
+Precision.bag.train
+
+auc.perf.bag=performance(prediction(as.numeric(as.character(bagging.train$pred.Car)),bagging.train$Car),"auc")
+AUC.bag.train = attr(auc.perf.bag,"y.values")[[1]]
+AUC.bag.train
+```
+
+
+```{r}
+# Testing  data performance
+
+bagging.test$pred.Car = predict(bagging.model,bagging.test)
+tab.bag.test = table(bagging.test$Car,bagging.test$pred.Car)
+tab.bag.test
+
+Accuracy.bag.test = sum(diag(tab.bag.test)/sum(tab.bag.test))
+Accuracy.bag.test
+
+Sensitivity.bag.test = tab.bag.test[2,2]/(tab.bag.test[2,1]+tab.bag.test[2,2])
+Sensitivity.bag.test
+
+Specificity.bag.test = tab.bag.test[1,1]/(tab.bag.test[1,1]+tab.bag.test[1,2])
+Specificity.bag.test
+
+Precision.bag.test = tab.bag.test[2,2]/(tab.bag.test[1,2]+tab.bag.test[2,2])
+Precision.bag.test
+
+auc.perf.bag=performance(prediction(as.numeric(as.character(bagging.test$pred.Car)),bagging.test$Car),"auc")
+AUC.bag.test = attr(auc.perf.bag,"y.values")[[1]]
+AUC.bag.test
+
+```
+
+```{r}
+# Boosting
+
+# All variables must be numeric for xgboost
+
+boosting.train = train_data
+boosting.train$Engineer = as.numeric(as.character(boosting.train$Engineer))
+boosting.train$MBA = as.numeric(as.character(boosting.train$MBA))
+boosting.train$license = as.numeric(as.character(boosting.train$license))
+boosting.train$Gender = as.numeric(as.character(boosting.train$Gender))
+boosting.train$Car = as.numeric(as.character(boosting.train$Car))
+
+
+boosting.test = test_data
+boosting.test$Engineer = as.numeric(as.character(boosting.test$Engineer))
+boosting.test$MBA = as.numeric(as.character(boosting.test$MBA))
+boosting.test$license = as.numeric(as.character(boosting.test$license))
+boosting.test$Gender = as.numeric(as.character(boosting.test$Gender))
+boosting.test$Car = as.numeric(as.character(boosting.test$Car))
+
+```
+
+
+
+```{r}
+# We need to separate training data and the dependent variable
+# Xgboost works with matrices
+
+boosting.train.features = as.matrix(boosting.train[,-9])
+boosting.train.label = as.matrix(boosting.train[,9])
+boosting.test.features = as.matrix(boosting.test[,-9])
+
+xgbModel = xgboost(
+  data = boosting.train.features,
+  label = boosting.train.label,
+  eta = 0.001,
+  max_depth = 3,
+  min_child_weight = 3,
+  nrounds = 1000,
+  nfold= 5,
+  objective = 'binary:logistic',
+  verbose = 0,
+  early_topping_rounds=10)
+
+# Insample performance
+boosting.train$pred.Car = predict(xgbModel,boosting.train.features)
+tab.boost.train = table(boosting.train$Car,boosting.train$pred.Car>0.5)
+tab.boost.train
+sum(diag(tab.boost.train)/sum(tab.boost.train))
+
+Accuracy.boost.train = sum(diag(tab.boost.train)/sum(tab.boost.train))
+Accuracy.boost.train
+
+Sensitivity.boost.train = tab.boost.train[2,2]/(tab.boost.train[2,1]+tab.boost.train[2,2])
+Sensitivity.boost.train
+
+Specificity.boost.train = tab.boost.train[1,1]/(tab.boost.train[1,1]+tab.boost.train[1,2])
+Specificity.boost.train
+
+Precision.boost.train = tab.boost.train[2,2]/(tab.boost.train[1,2]+tab.boost.train[2,2])
+Precision.boost.train
+
+auc.perf.boost=performance(prediction(as.numeric(as.character(boosting.train$pred.Car)),boosting.train$Car),"auc")
+AUC.boost.train = attr(auc.perf.boost,"y.values")[[1]]
+AUC.boost.train
+
+# Testing data performance
+boosting.test$pred.Car = predict(xgbModel,boosting.test.features)
+tab.boost.test = table(boosting.test$Car,boosting.test$pred.Car>0.5)
+tab.boost.test
+
+Accuracy.boost.test = sum(diag(tab.boost.test)/sum(tab.boost.test))
+Accuracy.boost.test
+
+Sensitivity.boost.test = tab.boost.test[2,2]/(tab.boost.test[2,1]+tab.boost.test[2,2])
+Sensitivity.boost.test
+
+Specificity.boost.test = tab.boost.test[1,1]/(tab.boost.test[1,1]+tab.boost.test[1,2])
+Specificity.boost.test
+
+Precision.boost.test = tab.boost.test[2,2]/(tab.boost.test[1,2]+tab.boost.test[2,2])
+Precision.boost.test
+
+auc.perf.boost=performance(prediction(as.numeric(as.character(boosting.test$pred.Car)),boosting.test$Car),"auc")
+AUC.boost.test = attr(auc.perf.boost,"y.values")[[1]]
+AUC.boost.test
+
+```
+
+
+```{r}
+#Model Comparison
+
+rows = c('Logit Train','Logit Test','kNN Test','Naïve Bayes Train','Naïve Bayes Test','Bagging Train','Bagging Test','Boosting Train','Boosting Test')
+
+cols = c('Acurracy','Sensitivity','Specificity','Precision','AUC')
+accuracy = c(Accuracy.logit.train,Accuracy.logit.test_data,Accuracy.knn,Accuracy.nb.train,Accuracy.nb.test,Accuracy.bag.train,Accuracy.bag.test,Accuracy.boost.train,Accuracy.boost.test)
+sensitivity = c(Sensitivity.logit.train,Sensitivity.logit.test_data,Sensitivity.knn,Sensitivity.nb.train,Sensitivity.nb.test,Sensitivity.bag.train,Sensitivity.bag.test,Sensitivity.boost.train,Sensitivity.boost.test)
+specificity = c(Specificity.logit.train,Specificity.logit.test_data,Specificity.knn,Specificity.nb.train,Specificity.nb.test,Specificity.bag.train,Specificity.bag.test,Specificity.boost.train,Specificity.boost.test)
+precision = c(Precision.logit.train,Precision.logit.test_data,Precision.knn,Precision.nb.train,Precision.nb.test,Precision.bag.train,Precision.bag.test,Precision.boost.train,Precision.boost.test)
+AUC = c(AUC.logit.train,AUC.logit.test,AUC.knn,AUC.nb.train,AUC.nb.test,AUC.bag.train,AUC.bag.test,AUC.boost.train,AUC.boost.test)
+
+model_comparison_table = data.frame(row.names = rows,accuracy,sensitivity,specificity,precision,AUC)
+model_comparison_table
+```
+
+# Observations:
+1. All the models predicetd the employees mode of transport with good accuracy
+2. Usually the bagging and boosting techniques will give better results when the data is unbalances but here we see that KNN, Naive Bayes with or without boosting and bagging gives very high accuracy and sensitivity values
+3. All the models have good predictions ont he Test Data except for Logisrtic Regression
+4. More than accurancy we are concerned about Sensitivity and Precision while delaing with Unbalanced data
+5. All the models wew able to predict Car = 1 for the 7 observations
+6. We find Logistic Regresssion at faoult as it predicts false positives
+7. As per the model performances we can recommend any of these models to be implemented for production
+8. Key variables that help to predict the employee using Car are Distance, Age, SAalry and License
+
+
+# Interpretations and recommendations form the models
+1. If the sample data is a interpretation of the original data then very less number of people prefer Car as compared to other mode of Transport
+2. Distance of travel is a major factor in predicting the mode of transport. If distance is high the probability of employee using a car is high
+3. Anothe factor that helps in detecting the mode of transport as car is Salary which is quite natural as only high salaried poeple can afford a car :-)
+4. We however observe a exception for female employees where even female employees with mid range salary prefers to commute by car
+5. Elderly aged people also prefers to travel by car as their work exp and salary will be higher
+Sow e can focus on these vairbales one at a time for better predictions
+
+# Source of Data 
+"Cars.CSV"
